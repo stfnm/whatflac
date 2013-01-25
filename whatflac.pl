@@ -40,39 +40,46 @@ use File::Copy qw/copy/;
 use Getopt::Long;
 Getopt::Long::Configure("permute");
 
-my ($OPT_VERBOSE, $OPT_NOTORRENT, $OPT_ZEROPAD, $OPT_MOVEOTHER, $OPT_OUTPUT, $OPT_PASSKEY, $OPT_TRACKER);
+################################################################################
+# Global variables
+#
 
+# Version number
 my $VERSION = "1.0";
 
 # Do you always want to move additional files (.jpg, .log, etc)?
-$OPT_MOVEOTHER = 0;
+my $OPT_MOVEOTHER = 0;
 
 # Output folder unless specified: ("/home/samuel/Desktop/")
-$OPT_OUTPUT = "";
+my $OPT_OUTPUT = "";
 
 # Do you want to zeropad tracknumber values? (1 => 01, 2 => 02 ...)
-$OPT_ZEROPAD = 1;
+my $OPT_ZEROPAD = 1;
 
 # Specify torrent passkey
-$OPT_PASSKEY = "";
+my $OPT_PASSKEY = "";
 
 # Specify tracker ("http://tracker.what.cd:34000/")
-$OPT_TRACKER = "http://tracker.what.cd:34000/";
+my $OPT_TRACKER = "http://tracker.what.cd:34000/";
 
 # List of default encoding options, add to this list if you want more
-my %enc_options = (
+my ($OPT_320, $OPT_V0, $OPT_V2, $OPT_Q8, $OPT_ALAC);
+my %ENC_OPTIONS = (
 	"320"  => {enc => "lame", opts => "-b 320 --ignore-tag-errors"},
 	"V0"   => {enc => "lame", opts => "-V 0 --vbr-new --ignore-tag-errors"},
 	"V2"   => {enc => "lame", opts => "-V 2 --vbr-new --ignore-tag-errors"},
 	"Q8"   => {enc => "oggenc", opts => "-q 8"},
 	"ALAC" => {enc => "ffmpeg", opts => "-i - -acodec alac"},
 );
+my (@ENC_OPTIONS, @FLAC_DIRS);
+my ($OPT_VERBOSE, $OPT_NOTORRENT);
 
-###
-# End of configuration
-###
+################################################################################
+# Subroutines
+#
 
-sub help {
+sub help
+{
 	print<<__EOH__;
 whatflac version $VERSION
 
@@ -104,39 +111,17 @@ __EOH__
 exit;
 }
 
-my (@enc_options, @flac_dirs);
-
-ARG: foreach my $arg (@ARGV) {
-	foreach my $opt (keys %enc_options) {
-		if ($arg =~ m/\Q$opt/i) {
-			push(@enc_options, $opt);
-			next ARG;
-		}
-	}
-}
-
-sub process {
+sub process_args
+{
 	my $arg = shift @_;
 	chop($arg) if $arg =~ m'/$';
-	push(@flac_dirs, $arg);
+	push(@FLAC_DIRS, $arg);
 }
 
-GetOptions('help' => \&help, 'verbose' => \$OPT_VERBOSE, 'notorrent' => \$OPT_NOTORRENT, 'zeropad', => \$OPT_ZEROPAD, 'moveother' => \$OPT_MOVEOTHER, 'output=s' => \$OPT_OUTPUT, 'passkey=s' => \$OPT_PASSKEY, 'tracker=s' => \$OPT_TRACKER, '<>' => \&process);
+sub transcode($) # flac_dir
+{
+	my $flac_dir = $_[0];
 
-$OPT_OUTPUT ||= "./";
-$OPT_OUTPUT =~ s'/?$'/' if $OPT_OUTPUT;	# Add a missing /
-
-unless (@flac_dirs) {
-	print "Need FLAC file parameter\n";
-	print "You can specify which lame encoding (V0, 320, ...) you want with --opt\n";
-	exit 0;
-}
-
-# Store the lame options we actually want.
-
-die "Need FLAC file parameter\n" unless @flac_dirs;
-
-foreach my $flac_dir (@flac_dirs) {
 	my (@files, @dirs);
 	if ($flac_dir eq '.' or $flac_dir eq './') {
 		$flac_dir = cwd;
@@ -145,7 +130,7 @@ foreach my $flac_dir (@flac_dirs) {
 	
 	print "Using $flac_dir\n" if $OPT_VERBOSE;
 	
-	foreach my $enc_option (@enc_options) {
+	foreach my $enc_option (@ENC_OPTIONS) {
 		my $mp3_dir = $OPT_OUTPUT . basename($flac_dir) . " ($enc_option)";
 		$mp3_dir =~ s/FLAC//ig;
 		mkpath($mp3_dir);
@@ -178,8 +163,8 @@ foreach my $flac_dir (@flac_dirs) {
 	
 			# Build the conversion script and do the actual conversion
 			my $flac_command;
-			if ($enc_options{$enc_option}->{'enc'} eq 'lame') {
-				$flac_command = "flac -dc \"$file\" | lame " . $enc_options{$enc_option}->{'opts'} . ' ' .
+			if ($ENC_OPTIONS{$enc_option}->{'enc'} eq 'lame') {
+				$flac_command = "flac -dc \"$file\" | lame " . $ENC_OPTIONS{$enc_option}->{'opts'} . ' ' .
 					'--tt "' . $tags{'TITLE'} . '" ' .
 					'--tl "' . $tags{'ALBUM'} . '" ' .
 					'--ta "' . $tags{'ARTIST'} . '" ' .
@@ -187,8 +172,8 @@ foreach my $flac_dir (@flac_dirs) {
 					'--tg "' . $tags{'GENRE'} . '" ' .
 					'--ty "' . $tags{'DATE'} . '" ' .
 					'--add-id3v2 - "' . $mp3_filename . '.mp3" 2>&1';
-			} elsif ($enc_options{$enc_option}->{'enc'} eq 'oggenc') {
-				$flac_command = "flac -dc \"$file\" | oggenc " . $enc_options{$enc_option}->{'opts'} . ' ' .
+			} elsif ($ENC_OPTIONS{$enc_option}->{'enc'} eq 'oggenc') {
+				$flac_command = "flac -dc \"$file\" | oggenc " . $ENC_OPTIONS{$enc_option}->{'opts'} . ' ' .
 					'-t "' . $tags{'TITLE'} . '" ' .
 					'-l "' . $tags{'ALBUM'} . '" ' .
 					'-a "' . $tags{'ARTIST'} . '" ' .
@@ -196,8 +181,8 @@ foreach my $flac_dir (@flac_dirs) {
 					'-G "' . $tags{'GENRE'} . '" ' .
 					'-d "' . $tags{'DATE'} . '" ' .
 					'-o "' . $mp3_filename . '.ogg" - 2>&1';
-			} elsif ($enc_options{$enc_option}->{'enc'} eq 'ffmpeg') {
-				$flac_command = "flac -dc \"$file\" | ffmpeg " . $enc_options{$enc_option}->{'opts'} . ' ' .
+			} elsif ($ENC_OPTIONS{$enc_option}->{'enc'} eq 'ffmpeg') {
+				$flac_command = "flac -dc \"$file\" | ffmpeg " . $ENC_OPTIONS{$enc_option}->{'opts'} . ' ' .
 					'-metadata title="' . $tags{'TITLE'} . '" ' .
 					'-metadata album="' . $tags{'ALBUM'} . '" ' .
 					'-metadata author="' . $tags{'ARTIST'} . '" ' .
@@ -237,4 +222,45 @@ foreach my $flac_dir (@flac_dirs) {
 		}
 	}
 	print "\nAll done with $flac_dir...\n" if $OPT_VERBOSE;
+}
+
+################################################################################
+# Main
+
+GetOptions(
+	'help' => \&help,
+	'verbose' => \$OPT_VERBOSE,
+	'notorrent' => \$OPT_NOTORRENT,
+	'zeropad', => \$OPT_ZEROPAD,
+	'moveother' => \$OPT_MOVEOTHER,
+	'output=s' => \$OPT_OUTPUT,
+	'passkey=s' => \$OPT_PASSKEY,
+	'tracker=s' => \$OPT_TRACKER,
+	'320' => \$OPT_320,
+	'V0' => \$OPT_V0,
+	'V2' => \$OPT_V2,
+	'Q8' => \$OPT_Q8,
+	'ALAC' => \$OPT_ALAC,
+	'<>' => \&process_args,
+	);
+
+push (@ENC_OPTIONS, "320") if ($OPT_320);
+push (@ENC_OPTIONS, "V0") if ($OPT_V0);
+push (@ENC_OPTIONS, "V2") if ($OPT_V2);
+push (@ENC_OPTIONS, "Q8") if ($OPT_Q8);
+push (@ENC_OPTIONS, "ALAC") if ($OPT_ALAC);
+
+$OPT_OUTPUT ||= "./";
+$OPT_OUTPUT =~ s'/?$'/' if $OPT_OUTPUT;	# Add a missing /
+
+unless (@FLAC_DIRS) {
+	print "Need FLAC file parameter\n";
+	print "You can specify which lame encoding (V0, 320, ...) you want with --opt\n";
+	exit 0;
+}
+
+die "Need FLAC file parameter\n" unless @FLAC_DIRS;
+
+foreach my $flac_dir (@FLAC_DIRS) {
+	transcode($flac_dir);
 }
