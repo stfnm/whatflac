@@ -131,8 +131,10 @@ sub transcode($) # flac_dir
 	print "Using $flac_dir\n" if $OPT_VERBOSE;
 	
 	foreach my $enc_option (@ENC_OPTIONS) {
-		my $mp3_dir = $OPT_OUTPUT . basename($flac_dir) . " ($enc_option)";
-		$mp3_dir =~ s/FLAC//ig;
+		my $mp3_dir = $OPT_OUTPUT . basename($flac_dir) . " [$enc_option]";
+		$mp3_dir =~ s/ ?[\[\(]?FLAC[\)\]]//ig; # If directory has FLAC in its name, replace that
+
+		# Make sure mp3 directory exists
 		mkpath($mp3_dir);
 		
 		print "\nEncoding with $enc_option started...\n" if $OPT_VERBOSE;
