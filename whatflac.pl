@@ -38,7 +38,6 @@ use File::Find qw/find/;
 use File::Path qw/mkpath/;
 use File::Copy qw/copy/;
 use Getopt::Long;
-Getopt::Long::Configure("permute");
 
 ################################################################################
 # Global variables
@@ -64,6 +63,9 @@ my $OPT_TRACKER = "http://tracker.what.cd:34000/";
 
 # Tag fixing mode?
 my $OPT_FIXTAGS = 0;
+
+# Show tags?
+my $OPT_SHOWTAGS = 0;
 
 # List of default encoding options, add to this list if you want more
 my ($OPT_320, $OPT_V0, $OPT_V2, $OPT_Q8, $OPT_ALAC);
@@ -107,6 +109,8 @@ Usage of $0:
 		do not generate a torrent file (default false)
 	--fixtags
 		interactively fix tags in flac files
+	--showtags
+		print tags of all flac files
 	
 Minimally, you need a passkey, a tracker, and an encoding option to create a 
 working torrent to upload.
@@ -245,6 +249,26 @@ sub transcode($) # flac_dir
 	print "\nAll done with $flac_dir...\n" if $OPT_VERBOSE;
 }
 
+sub showtags($)
+{
+	my $flac_dir = $_[0];
+
+	# Find all flac files
+	my @files;
+	if ($flac_dir eq '.' or $flac_dir eq './') {
+		$flac_dir = cwd;
+	}
+	find( sub { push(@files, $File::Find::name) if ($File::Find::name =~ m/\.flac$/i) }, $flac_dir);
+
+	print "Using $flac_dir\n" if $OPT_VERBOSE;
+
+	foreach my $file (@files) {
+		print "Existing tags in file `$file':\n";
+		system("metaflac --export-tags-to=- \"$file\"");
+		print "\n";
+	}
+}
+
 sub fixtags($)
 {
 	my $flac_dir = $_[0];
@@ -301,6 +325,7 @@ sub fixtags($)
 ################################################################################
 # Main
 
+Getopt::Long::Configure("permute");
 GetOptions(
 	'help' => \&help,
 	'verbose' => \$OPT_VERBOSE,
@@ -311,6 +336,7 @@ GetOptions(
 	'passkey=s' => \$OPT_PASSKEY,
 	'tracker=s' => \$OPT_TRACKER,
 	'fixtags' => \$OPT_FIXTAGS,
+	'showtags' => \$OPT_SHOWTAGS,
 	'320' => \$OPT_320,
 	'V0' => \$OPT_V0,
 	'V2' => \$OPT_V2,
@@ -328,6 +354,8 @@ unless (@FLAC_DIRS) {
 foreach my $flac_dir (@FLAC_DIRS) {
 	if ($OPT_FIXTAGS) {
 		fixtags($flac_dir);
+	} elsif ($OPT_SHOWTAGS) {
+		showtags($flac_dir);
 	} else {
 		transcode($flac_dir);
 	}
