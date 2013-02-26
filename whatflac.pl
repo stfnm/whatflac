@@ -62,6 +62,9 @@ my $OPT_PASSKEY = "";
 # Specify tracker ("http://tracker.what.cd:34000/")
 my $OPT_TRACKER = "http://tracker.what.cd:34000/";
 
+# Tag fixing mode?
+my $OPT_FIXTAGS = 0;
+
 # List of default encoding options, add to this list if you want more
 my ($OPT_320, $OPT_V0, $OPT_V2, $OPT_Q8, $OPT_ALAC);
 my %ENC_OPTIONS = (
@@ -102,6 +105,8 @@ Usage of $0:
 		specify tracker address to use (default "http://tracker.what.cd:34000")
 	--notorrent
 		do not generate a torrent file (default false)
+	--fixtags
+		interactively fix tags in flac files
 	
 Minimally, you need a passkey, a tracker, and an encoding option to create a 
 working torrent to upload.
@@ -122,7 +127,7 @@ sub transcode($) # flac_dir
 {
 	my $flac_dir = $_[0];
 
-	my (@files, @dirs);
+	my @files;
 	if ($flac_dir eq '.' or $flac_dir eq './') {
 		$flac_dir = cwd;
 	}
@@ -226,6 +231,59 @@ sub transcode($) # flac_dir
 	print "\nAll done with $flac_dir...\n" if $OPT_VERBOSE;
 }
 
+sub fixtags($)
+{
+	my $flac_dir = $_[0];
+
+	# Required tags
+	my %tags = (
+		ARTIST => "",
+		ALBUM => "",
+		TITLE => "",
+		TRACKNUMBER => "",
+	);
+
+	# Find all flac files
+	my @files;
+	if ($flac_dir eq '.' or $flac_dir eq './') {
+		$flac_dir = cwd;
+	}
+	find( sub { push(@files, $File::Find::name) if ($File::Find::name =~ m/\.flac$/i) }, $flac_dir);
+
+	print "Using $flac_dir\n" if $OPT_VERBOSE;
+
+	foreach my $file (@files) {
+		# Read existing tags
+		my @output = `metaflac --export-tags-to=- "$file"`;
+		print "Existing tags in file `$file':\n";
+		print @output;
+
+		# Parse existing tags to hash map
+		foreach my $line (@output) {
+			if ($line =~ /(.*?)=(.*)/) {
+				my ($tag, $value) = ($1, $2);
+				$tags{uc($tag)} = $value if (exists $tags{uc($tag)});
+			}
+		}
+
+		print "\nFix missing or incorrect tags (press enter to keep existing value):\n";
+
+		# User input for missing/incorrect tags
+		while (my ($tag, $value) = each(%tags)) {
+			print "$tag ($value): ";
+			my $input = <STDIN>;
+			chomp($input);
+
+			if (length($input) > 0) {
+				$value = $input;
+				#print "Adding tag $tag with value $value...\n";
+				system("metaflac --remove-tag=\"$tag\" \"$file\"");
+				system("metaflac --set-tag=\"$tag=$value\" \"$file\"");
+			}
+		}
+	}
+}
+
 ################################################################################
 # Main
 
@@ -238,6 +296,7 @@ GetOptions(
 	'output=s' => \$OPT_OUTPUT,
 	'passkey=s' => \$OPT_PASSKEY,
 	'tracker=s' => \$OPT_TRACKER,
+	'fixtags' => \$OPT_FIXTAGS,
 	'320' => \$OPT_320,
 	'V0' => \$OPT_V0,
 	'V2' => \$OPT_V2,
@@ -264,5 +323,9 @@ unless (@FLAC_DIRS) {
 die "Need FLAC file parameter\n" unless @FLAC_DIRS;
 
 foreach my $flac_dir (@FLAC_DIRS) {
-	transcode($flac_dir);
+	if ($OPT_FIXTAGS) {
+		fixtags($flac_dir);
+	} else {
+		transcode($flac_dir);
+	}
 }
