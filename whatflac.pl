@@ -123,9 +123,23 @@ sub process_args
 	push(@FLAC_DIRS, $arg);
 }
 
+sub process_enc_options
+{
+	push (@ENC_OPTIONS, "320") if ($OPT_320);
+	push (@ENC_OPTIONS, "V0") if ($OPT_V0);
+	push (@ENC_OPTIONS, "V2") if ($OPT_V2);
+	push (@ENC_OPTIONS, "Q8") if ($OPT_Q8);
+	push (@ENC_OPTIONS, "ALAC") if ($OPT_ALAC);
+}
+
 sub transcode($) # flac_dir
 {
 	my $flac_dir = $_[0];
+
+	$OPT_OUTPUT ||= "./";
+	$OPT_OUTPUT =~ s'/?$'/' if $OPT_OUTPUT;	# Add a missing /
+
+	process_enc_options();
 
 	my @files;
 	if ($flac_dir eq '.' or $flac_dir eq './') {
@@ -303,24 +317,13 @@ GetOptions(
 	'Q8' => \$OPT_Q8,
 	'ALAC' => \$OPT_ALAC,
 	'<>' => \&process_args,
-	);
-
-push (@ENC_OPTIONS, "320") if ($OPT_320);
-push (@ENC_OPTIONS, "V0") if ($OPT_V0);
-push (@ENC_OPTIONS, "V2") if ($OPT_V2);
-push (@ENC_OPTIONS, "Q8") if ($OPT_Q8);
-push (@ENC_OPTIONS, "ALAC") if ($OPT_ALAC);
-
-$OPT_OUTPUT ||= "./";
-$OPT_OUTPUT =~ s'/?$'/' if $OPT_OUTPUT;	# Add a missing /
+);
 
 unless (@FLAC_DIRS) {
 	print "Need FLAC file parameter\n";
 	print "You can specify which lame encoding (V0, 320, ...) you want with --opt\n";
 	exit 0;
 }
-
-die "Need FLAC file parameter\n" unless @FLAC_DIRS;
 
 foreach my $flac_dir (@FLAC_DIRS) {
 	if ($OPT_FIXTAGS) {
